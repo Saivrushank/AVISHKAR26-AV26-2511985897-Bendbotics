@@ -4,8 +4,8 @@
 **Event:** AVISHKAR'26 – 24-Hour Hackathon  
 **Institute:** Adichunchanagiri Institute of Technology, Chikkamagaluru  
 **Domain:** Embedded Systems & IoT  
-**Team ID:** [INSERT TEAM ID]  
-**Team Name:** [INSERT TEAM NAME]
+**Team ID:** AV26-2511985897  
+**Team Name:** Bendbotics
 
 ---
 
