@@ -1,0 +1,144 @@
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <ESPmDNS.h>
+
+// ================= WIFI & UDP =================
+const char* ssid = "Krishna";
+const char* password = "7016110566";
+const unsigned int UDP_PORT = 4210;
+
+// ================= DUAL JOYSTICK PINS =================
+#define JOY1_FEED_PIN 35   // Joystick 1 VRy -> Wire Feeder motor
+#define JOY2_BEND_PIN 34   // Joystick 2 VRx -> Wire Bender motor
+#define JOY2_SW_PIN   26   // Joystick 2 SW  -> Toggle Servo UP/DOWN (add 10k pull-up to 3.3V)
+#define LED_PIN       2    // Onboard LED shows Wi-Fi + calibration ready
+
+// ================= TUNING =================
+#define DEADZONE         550    // Wider deadzone prevents resting drift
+#define MAX_MANUAL_SPEED 400   // Max steps/sec in manual mode
+#define INVERT_FEED_AXIS true    // Change to false if Joystick 1 feeds backward
+#define INVERT_BEND_AXIS true  // Change to true if Joystick 2 bends backward
+
+WiFiUDP udp;
+IPAddress machineIP;
+bool machineFound = false;
+
+int centerFeed = 2048;
+int centerBend = 2048;
+
+// Noise-proof button debounce variables
+bool stableBtnState = HIGH;
+bool lastRawBtnState = HIGH;
+unsigned long btnChangeTime = 0;
+const unsigned long DEBOUNCE_MS = 60;
+
+unsigned long lastSendTime = 0;
+unsigned long lastResolveTime = 0;
+
+// Averages 10 ADC samples to filter out RF/electrical noise spikes
+int readFilteredADC(int pin) {
+  long total = 0;
+  for (int i = 0; i < 10; i++) {
+    total += analogRead(pin);
+  }
+  return total / 10;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(JOY2_SW_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  // 1. Connect Wi-Fi FIRST so ADC voltage reference stabilizes under Wi-Fi load
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting Dual-Joystick Remote");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nRemote Connected!");
+
+  // 2. Calibrate joystick centers AFTER Wi-Fi is active (keep sticks untouched)
+  delay(200);
+  long sumFeed = 0, sumBend = 0;
+  for (int i = 0; i < 30; i++) {
+    sumFeed += readFilteredADC(JOY1_FEED_PIN);
+    sumBend += readFilteredADC(JOY2_BEND_PIN);
+    delay(10);
+  }
+  centerFeed = sumFeed / 30;
+  centerBend = sumBend / 30;
+
+  Serial.print("Calibrated Centers -> Feed: ");
+  Serial.print(centerFeed);
+  Serial.print(" | Bend: ");
+  Serial.println(centerBend);
+
+  digitalWrite(LED_PIN, HIGH); // LED ON = Ready to operate
+  MDNS.begin("wirebender-remote");
+  udp.begin(UDP_PORT);
+}
+
+int axisToSpeed(int raw, int center, bool invert) {
+  int diff = raw - center;
+  if (abs(diff) < DEADZONE) return 0;
+
+  long speed = 0;
+  if (diff > 0) {
+    speed = map(diff, DEADZONE, 4095 - center, 150, MAX_MANUAL_SPEED);
+  } else {
+    speed = -map(-diff, DEADZONE, center, 150, MAX_MANUAL_SPEED);
+  }
+  speed = constrain(speed, -MAX_MANUAL_SPEED, MAX_MANUAL_SPEED);
+  return invert ? -speed : speed;
+}
+
+void loop() {
+  // Automatically locate ESP32 #1 via mDNS if not found yet
+  if (!machineFound && (millis() - lastResolveTime > 2000)) {
+    lastResolveTime = millis();
+    IPAddress ip = MDNS.queryHost("wirebender");
+    if (ip != INADDR_NONE && ip[0] != 0) {
+      machineIP = ip;
+      machineFound = true;
+      Serial.print("Found Machine at: ");
+      Serial.println(machineIP);
+    }
+  }
+
+  // Noise-immune button detection: must stay LOW for 60ms continuously to trigger
+  int servoToggle = 0;
+  bool rawBtn = digitalRead(JOY2_SW_PIN);
+
+  if (rawBtn != lastRawBtnState) {
+    btnChangeTime = millis();
+    lastRawBtnState = rawBtn;
+  }
+
+  if ((millis() - btnChangeTime) >= DEBOUNCE_MS && rawBtn != stableBtnState) {
+    stableBtnState = rawBtn;
+    if (stableBtnState == LOW) {
+      servoToggle = 1; // Confirmed real button press
+    }
+  }
+
+  // Send UDP packet every 40ms (or immediately on confirmed button press)
+  if (machineFound && (servoToggle == 1 || millis() - lastSendTime >= 40)) {
+    lastSendTime = millis();
+
+    int feedRaw = readFilteredADC(JOY1_FEED_PIN);
+    int bendRaw = readFilteredADC(JOY2_BEND_PIN);
+
+    int feedSpeed = axisToSpeed(feedRaw, centerFeed, INVERT_FEED_AXIS);
+    int bendSpeed = axisToSpeed(bendRaw, centerBend, INVERT_BEND_AXIS);
+
+    char msg[32];
+    snprintf(msg, sizeof(msg), "%d,%d,%d", feedSpeed, bendSpeed, servoToggle);
+
+    udp.beginPacket(machineIP, UDP_PORT);
+    udp.print(msg);
+    udp.endPacket();
+  }
+}
