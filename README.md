@@ -350,7 +350,8 @@ Refer to the respective library repositories for their original license terms.
 ![Bendbotics Prototype](Prototype.jpeg)
 
 ## Project Demonstration
-[▶ Watch Project Demonstration](./Working%20video.mp4)
+
+https://github.com/user-attachments/assets/a6853b1a-12eb-43f6-959d-85822e8e4a6f
 ---
 
 <p align="center">
