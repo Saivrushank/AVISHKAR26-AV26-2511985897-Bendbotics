@@ -349,6 +349,9 @@ Refer to the respective library repositories for their original license terms.
 
 ![Bendbotics Prototype](Prototype.jpeg)
 
+## Project Demonstration
+[Watch Project Demonstration](Working video.mp4)
+
 ---
 
 <p align="center">
