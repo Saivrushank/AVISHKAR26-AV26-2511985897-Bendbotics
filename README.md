@@ -345,6 +345,10 @@ Our long-term aim is to explore how this concept can be developed into an afford
 
 Refer to the respective library repositories for their original license terms.
 
+## Project Preview
+
+![Bendbotics Prototype](Prototype.jpeg)
+
 ---
 
 <p align="center">
