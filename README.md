@@ -353,6 +353,4 @@ Refer to the respective library repositories for their original license terms.
   AVISHKAR'26 | Embedded Systems & IoT
 </p>
 
-<p align="center">
-  ⭐ If you find our project interesting, consider giving this repository a star!
-</p>
+
